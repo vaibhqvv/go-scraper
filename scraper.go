@@ -5,25 +5,20 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
 	"github.com/gocolly/colly"
 )
 
-type ScrapedData struct {
-	Title string
-	URL   string
-}
-
-func scrapePage(url string, ch chan<- ScrapedData, wg *sync.WaitGroup) {
+func scrapePage(url string, outputDir string, wg *sync.WaitGroup) {
 	defer wg.Done()
 	c := colly.NewCollector()
-	var data ScrapedData // to store scraped info
+	var pageContent string // to store scraped info
 
-	c.OnHTML("title", func(e *colly.HTMLElement) {
-		data.Title = e.Text
-		data.URL = url
+	c.OnResponse(func(r *colly.Response) {
+		pageContent = string(r.Body)
 	})
 
 	c.OnError(func(_ *colly.Response, err error) {
@@ -34,7 +29,19 @@ func scrapePage(url string, ch chan<- ScrapedData, wg *sync.WaitGroup) {
 		log.Printf("Could not visit %s: %s", url, err)
 	}
 
-	ch <- data
+	// to generate filenaem for scraped info
+	fileName := strings.ReplaceAll(url, "https://", "")
+	fileName = strings.ReplaceAll(fileName, "http://", "")
+	fileName = strings.ReplaceAll(fileName, "/", "_") + ".html"
+
+	filePath := filepath.Join(outputDir, fileName)
+
+	err = os.WriteFile(filePath, []byte(pageContent), 0644)
+	if err != nil {
+		log.Printf("Error saving %s: %s", filePath, err)
+		return
+	}
+	fmt.Printf("Saved %s to %s\n", url, filePath)
 }
 
 func main() {
@@ -43,19 +50,17 @@ func main() {
 	input, _ := reader.ReadString('\n')
 	urls := strings.Fields(input)
 
-	ch := make(chan ScrapedData) //channel to recieve scraped data
+	outputDir := "scrapedHTML"
+	err := os.MkdirAll(outputDir, os.ModePerm) //if directory isnt there, create one
+	if err != nil {
+		log.Fatalf("Failed to create directory %s: %s", outputDir, err)
+	}
 	var wg sync.WaitGroup
 
 	for _, url := range urls {
 		wg.Add(1)
-		go scrapePage(url, ch, &wg)
+		go scrapePage(url, outputDir, &wg)
 	}
-
-	go func() { //goroutine to close channel
-		wg.Wait()
-		close(ch)
-	}()
-	for data := range ch {
-		fmt.Printf("Title: %s\nURL: %s\n\n", data.Title, data.URL)
-	}
+	wg.Wait()
+	fmt.Println("All pages have been scraped and saved.")
 }
