@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,7 +15,10 @@ import (
 
 func scrapePage(url string, outputDir string, wg *sync.WaitGroup) {
 	defer wg.Done()
-	c := colly.NewCollector()
+	c := colly.NewCollector(
+		colly.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.82 Safari/537.36"),
+	)
+
 	var pageContent string // to store scraped info
 
 	c.OnResponse(func(r *colly.Response) {
@@ -32,7 +36,9 @@ func scrapePage(url string, outputDir string, wg *sync.WaitGroup) {
 	// to generate filenaem for scraped info
 	fileName := strings.ReplaceAll(url, "https://", "")
 	fileName = strings.ReplaceAll(fileName, "http://", "")
-	fileName = strings.ReplaceAll(fileName, "/", "_") + ".html"
+	fileName = strings.ReplaceAll(fileName, "/", "_")
+	fileName = strings.Split(fileName, "?")[0] //to remove anything after '?'
+	fileName += ".html"
 
 	filePath := filepath.Join(outputDir, fileName)
 
@@ -63,4 +69,8 @@ func main() {
 	}
 	wg.Wait()
 	fmt.Println("All pages have been scraped and saved.")
+
+	http.Handle("/", http.FileServer(http.Dir(outputDir)))
+	fmt.Println("Serving scraped files at http://localhost:8080/")
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }
