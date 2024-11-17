@@ -1,0 +1,9 @@
+https://www.tutorialspoint.com/producer-consumer-problem-using-semaphores
+https://www.geeksforgeeks.org/program-best-fit-algorithm-memory-management/?ref=lbp
+https://en.wikipedia.org/wiki/Kernel_(operating_system)
+https://www.geeksforgeeks.org/scan-elevator-disk-scheduling-algorithms/
+https://www.programiz.com/c-programming/online-compiler/
+https://developers.google.com/machine-learning/crash-course/prereqs-and-prework
+https://laravel.com/
+https://pointerpointer.com/
+https://build.nvidia.com/nvidia/llama-3_1-nemotron-70b-instruct

@@ -10,8 +10,37 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/PuerkitoBio/goquery"
 	"github.com/gocolly/colly"
 )
+
+func retryVisit(c *colly.Collector, url string, retries int) error {
+	var err error
+	for i := 0; i < retries; i++ {
+		err = c.Visit(url)
+		if err == nil {
+			return nil
+		}
+		log.Printf("Retry %d for %s failed: %s", i+1, url, err)
+	}
+	return err
+}
+
+func writeSummary(url string, success bool, outputDir string) {
+	summaryFile := filepath.Join(outputDir, "summary.txt")
+	f, err := os.OpenFile(summaryFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Printf("Error creating summary file: %s", err)
+		return
+	}
+	defer f.Close()
+
+	status := "SUCCESS"
+	if !success {
+		status = "FAILED"
+	}
+	f.WriteString(fmt.Sprintf("URL: %s - %s\n", url, status))
+}
 
 func scrapePage(url string, outputDir string, wg *sync.WaitGroup) {
 	defer wg.Done()
@@ -22,15 +51,24 @@ func scrapePage(url string, outputDir string, wg *sync.WaitGroup) {
 	var pageContent string // to store scraped info
 
 	c.OnResponse(func(r *colly.Response) {
-		pageContent = string(r.Body)
+		doc, err := goquery.NewDocumentFromReader(strings.NewReader(string(r.Body)))
+		if err != nil {
+			log.Printf("Error parsing HTML for %s: %s", url, err)
+			writeSummary(url, false, outputDir)
+			return
+		}
+		pageContent, _ = doc.Html()
 	})
 
 	c.OnError(func(_ *colly.Response, err error) {
 		log.Printf("Error while visiting %s: %s", url, err)
+		writeSummary(url, false, outputDir)
 	})
-	err := c.Visit(url)
+	err := retryVisit(c, url, 3)
 	if err != nil {
 		log.Printf("Could not visit %s: %s", url, err)
+		writeSummary(url, false, outputDir)
+		return
 	}
 
 	// to generate filenaem for scraped info
@@ -45,16 +83,46 @@ func scrapePage(url string, outputDir string, wg *sync.WaitGroup) {
 	err = os.WriteFile(filePath, []byte(pageContent), 0644)
 	if err != nil {
 		log.Printf("Error saving %s: %s", filePath, err)
+		writeSummary(url, false, outputDir)
 		return
 	}
 	fmt.Printf("Saved %s to %s\n", url, filePath)
+	writeSummary(url, true, outputDir)
+}
+
+func readLinksFromFile(fileName string) []string {
+	file, err := os.Open(fileName)
+	if err != nil {
+		log.Fatalf("Error opening file %s: %s", fileName, err)
+	}
+	defer file.Close()
+
+	var urls []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		url := strings.TrimSpace(scanner.Text())
+		if url != "" {
+			urls = append(urls, url)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Fatalf("Error reading file %s: %s", fileName, err)
+	}
+	return urls
+}
+
+func initLogger() { //redirects all errors to log.txt file
+	logFile, err := os.OpenFile("log.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatalf("Failed to create log file: %s", err)
+	}
+	log.SetOutput(logFile)
 }
 
 func main() {
-	fmt.Println("Enter the URLs to scrape (separated by spaces):")
-	reader := bufio.NewReader(os.Stdin)
-	input, _ := reader.ReadString('\n')
-	urls := strings.Fields(input)
+	initLogger()
+	urls := readLinksFromFile("links.txt") //read urls from links.txt
 
 	outputDir := "scrapedHTML"
 	err := os.MkdirAll(outputDir, os.ModePerm) //if directory isnt there, create one
