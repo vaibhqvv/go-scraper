@@ -46,7 +46,7 @@ https://github.com
 
 ### **Run the Scraper**  
 ```sh
-./scraper
+go run scraper.go
 ```
 - Scrapes all websites listed in `links.txt`.  
 - Saves HTML files in `scrapedHTML/`.  
